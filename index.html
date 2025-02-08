@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>网页沙盘程序</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        #toolbar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .tool-btn {
+            width: 40px;
+            height: 40px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        #context-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            display: none;
+        }
+        .context-menu-item {
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        .context-menu-item:hover {
+            background: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <button class="tool-btn" data-type="circle">○</button>
+        <button class="tool-btn" data-type="square">□</button>
+        <button class="tool-btn" data-type="line">／</button>
+        <button id="save-btn" class="tool-btn">💾</button>
+        <button id="load-btn" class="tool-btn">📂</button>
+    </div>
+
+    <div id="context-menu">
+        <div class="context-menu-item" id="delete-item">删除</div>
+        <div class="context-menu-item" id="clone-item">克隆</div>
+    </div>
+
+    <canvas id="sandbox"></canvas>
+
+    <script>
+        const canvas = document.getElementById('sandbox');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置画布尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // 状态管理
+        let currentType = 'square';
+        let elements = [];
+        let selectedElement = null;
+        let isDragging = false;
+        let startX, startY;
+
+        // 元素类型配置
+        const elementConfig = {
+            circle: { color: '#FF6B6B', size: 40 },
+            square: { color: '#4ECDC4', size: 50 },
+            line: { color: '#45B7D1', size: 60 }
+        };
+
+        // 工具按钮事件
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if (this.dataset.type) {
+                    currentType = this.dataset.type;
+                } else if (this.id === 'save-btn') {
+                    saveState();
+                } else if (this.id === 'load-btn') {
+                    loadState();
+                }
+            });
+        });
+
+        // 绘制功能
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            elements.forEach(el => {
+                ctx.fillStyle = el.color;
+                if (el.type === 'square') {
+                    ctx.fillRect(el.x, el.y, el.size, el.size);
+                } else if (el.type === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(el.x + el.size/2, el.y + el.size/2, el.size/2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else if (el.type === 'line') {
+                    ctx.beginPath();
+                    ctx.moveTo(el.x, el.y);
+                    ctx.lineTo(el.x + el.size, el.y + el.size);
+                    ctx.strokeStyle = el.color;
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                }
+            });
+        }
+
+        // 事件处理
+        canvas.addEventListener('mousedown', startDrag);
+        canvas.addEventListener('mousemove', drag);
+        canvas.addEventListener('mouseup', endDrag);
+        canvas.addEventListener('contextmenu', showContextMenu);
+
+        function startDrag(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            selectedElement = elements.find(el => {
+                return x > el.x && x < el.x + el.size &&
+                       y > el.y && y < el.y + el.size;
+            });
+
+            if (selectedElement) {
+                isDragging = true;
+                startX = x - selectedElement.x;
+                startY = y - selectedElement.y;
+            } else if (e.button === 0) {
+                elements.push({
+                    type: currentType,
+                    x: x - elementConfig[currentType].size/2,
+                    y: y - elementConfig[currentType].size/2,
+                    size: elementConfig[currentType].size,
+                    color: elementConfig[currentType].color
+                });
+                draw();
+            }
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            const rect = canvas.getBoundingClientRect();
+            selectedElement.x = e.clientX - rect.left - startX;
+            selectedElement.y = e.clientY - rect.top - startY;
+            draw();
+        }
+        function endDrag() {
+            isDragging = false;
+            selectedElement = null;
+        }
+
+        // 右键菜单处理
+        function showContextMenu(e) {
+            e.preventDefault();
+            const menu = document.getElementById('context-menu');
+            const rect = canvas.getBoundingClientRect();
+            
+            // 检测点击元素
+            selectedElement = elements.find(el => {
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                return x > el.x && x < el.x + el.size &&
+                       y > el.y && y < el.y + el.size;
+            });
+
+            if (selectedElement) {
+                menu.style.display = 'block';
+                menu.style.left = e.clientX + 'px';
+                menu.style.top = e.clientY + 'px';
+            }
+        }
+
+        // 右键菜单操作
+        document.getElementById('delete-item').addEventListener('click', () => {
+            if (selectedElement) {
+                elements = elements.filter(el => el !== selectedElement);
+                draw();
+            }
+            hideContextMenu();
+        });
+
+        document.getElementById('clone-item').addEventListener('click', () => {
+            if (selectedElement) {
+                elements.push({
+                    ...selectedElement,
+                    x: selectedElement.x + 20,
+                    y: selectedElement.y + 20
+                });
+                draw();
+            }
+            hideContextMenu();
+        });
+
+        // 隐藏右键菜单
+        document.addEventListener('click', hideContextMenu);
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+
+        // 状态存储功能
+        function saveState() {
+            const data = {
+                elements: elements,
+                canvasSize: { width: canvas.width, height: canvas.height }
+            };
+            localStorage.setItem('sandbox-state', JSON.stringify(data));
+            alert('状态已保存');
+        }
+
+        function loadState() {
+            const data = JSON.parse(localStorage.getItem('sandbox-state'));
+            if (data) {
+                elements = data.elements;
+                canvas.width = data.canvasSize.width;
+                canvas.height = data.canvasSize.height;
+                draw();
+                alert('状态已加载');
+            } else {
+                alert('找不到保存记录');
+            }
+        }
+
+        // 初始绘制
+        draw();
+    </script>
+</body>
+</html>
+
+       
